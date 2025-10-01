@@ -93,16 +93,25 @@ class TradeReconciler:
                         broker_info = self._detect_broker_from_content(broker_file)
                         broker_file.seek(0)  # Reset for parsing
 
-                    if not broker_info:
-                        error_msg = f"Could not detect broker type from file: {broker_file.name}"
+                    # Check if detection returned diagnostic info
+                    if isinstance(broker_info, dict) and broker_info.get('error') == 'detection_failed':
+                        columns = broker_info.get('columns', [])
+                        first_row = broker_info.get('first_row', {})
+                        read_error = broker_info.get('read_error')
+
+                        if read_error:
+                            error_msg = f"Could not read {broker_file.name} as Excel/CSV.\n  Error: {read_error}"
+                        elif columns:
+                            error_msg = f"Could not detect broker from {broker_file.name}.\n  Columns: {', '.join(str(c) for c in columns[:15])}{'...' if len(columns) > 15 else ''}\n  Sample: {list(first_row.values())[:3] if first_row else 'N/A'}"
+                        else:
+                            error_msg = f"Could not detect broker from {broker_file.name} (unknown structure)"
+
                         logger.warning(error_msg)
                         parse_errors.append(error_msg)
                         continue
 
-                    # Check if detection returned diagnostic info instead of broker_info
-                    if isinstance(broker_info, dict) and broker_info.get('error') == 'detection_failed':
-                        columns = broker_info.get('columns', [])
-                        error_msg = f"Could not detect broker from {broker_file.name}. Columns found: {', '.join(columns[:10])}{'...' if len(columns) > 10 else ''}"
+                    if not broker_info:
+                        error_msg = f"Could not detect broker type from file: {broker_file.name} (file may be unreadable or empty)"
                         logger.warning(error_msg)
                         parse_errors.append(error_msg)
                         continue
@@ -257,7 +266,13 @@ class TradeReconciler:
                     logger.info(f"Successfully read CSV file for detection. Columns: {list(df.columns)}")
                 except Exception as csv_error:
                     logger.error(f"Could not read file as Excel or CSV: Excel error: {e}, CSV error: {csv_error}")
-                    return None
+                    # Return diagnostic info about read failure
+                    return {
+                        'error': 'detection_failed',
+                        'columns': [],
+                        'first_row': None,
+                        'read_error': f"Excel: {str(e)[:100]}, CSV: {str(csv_error)[:100]}"
+                    }
 
             # Method 1: Look for broker code columns
             broker_code_columns = ['Broker Code', 'BrokerNSECode', 'Broker NSE Code', 'TM Code']

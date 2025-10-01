@@ -300,7 +300,11 @@ if st.sidebar.button("🚀 Run Reconciliation", type="primary", disabled=not (cl
                     st.subheader("🔍 Detailed Diagnostics")
                     st.markdown("**Individual file errors:**")
                     for error in result['parse_errors']:
-                        st.markdown(f"- {error}")
+                        # Format multi-line errors as code blocks
+                        if '\n' in error:
+                            st.code(error, language=None)
+                        else:
+                            st.markdown(f"- {error}")
 
                     st.info("""
                     **💡 Troubleshooting Tips:**
