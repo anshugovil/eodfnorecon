@@ -1286,33 +1286,42 @@ class MorganStanleyParser(BrokerParserBase):
                 # Try to decrypt if password-protected
                 decrypted_file = decrypt_excel_file(file_obj)
                 if decrypted_file:
-                    file_obj = decrypted_file
+                    file_to_use = decrypted_file
+                    logger.info("Morgan Stanley file was password-protected, using decrypted version")
+                else:
+                    file_to_use = file_obj
 
                 # Read all sheets and find the one with Trade Date
-                xls = pd.ExcelFile(file_obj)
+                xls = pd.ExcelFile(file_to_use)
                 df = None
+                header_row_idx = None
+                target_sheet = None
 
                 for sheet_name in xls.sheet_names:
-                    temp_df = pd.read_excel(file_obj, sheet_name=sheet_name, header=None)
+                    file_to_use.seek(0)
+                    temp_df = pd.read_excel(file_to_use, sheet_name=sheet_name, header=None)
 
                     # Find header row
                     for idx, row in temp_df.iterrows():
                         row_str = ' '.join([str(val) for val in row if pd.notna(val)])
                         if 'Trade Date' in row_str and 'CP Code' in row_str:
                             logger.info(f"Found Morgan Stanley header at row {idx} in sheet '{sheet_name}'")
-                            # Re-read with proper header
-                            file_obj.seek(0)
-                            df = pd.read_excel(file_obj, sheet_name=sheet_name, header=idx)
+                            header_row_idx = idx
+                            target_sheet = sheet_name
                             break
 
-                    if df is not None:
+                    if header_row_idx is not None:
                         break
 
-                if df is None:
-                    logger.error("Could not find header row in any Excel sheet")
+                if header_row_idx is None:
+                    logger.error("Could not find header row (with 'Trade Date' and 'CP Code') in any Excel sheet")
                     return pd.DataFrame()
 
-                logger.info(f"Read Morgan Stanley Excel file with {len(df)} rows")
+                # Re-read with proper header
+                file_to_use.seek(0)
+                df = pd.read_excel(file_to_use, sheet_name=target_sheet, header=header_row_idx)
+
+                logger.info(f"Read Morgan Stanley Excel file with {len(df)} rows from sheet '{target_sheet}'")
                 logger.info(f"Columns found: {list(df.columns)}")
 
             except Exception as excel_error:
@@ -1497,6 +1506,8 @@ class MorganStanleyParser(BrokerParserBase):
 
             if not parsed_rows:
                 logger.error(f"No Morgan Stanley rows successfully parsed from {len(df)} data rows")
+                logger.error(f"Check if data rows exist below header row {header_row_idx if 'header_row_idx' in locals() else 'unknown'}")
+                logger.error(f"First few rows of dataframe:\n{df.head() if not df.empty else 'Empty DataFrame'}")
 
             result_df = pd.DataFrame(parsed_rows)
             logger.info(f"Parsed {len(result_df)} Morgan Stanley trades with Bloomberg tickers")

@@ -105,6 +105,27 @@ if st.sidebar.button("🚀 Run Reconciliation", type="primary", disabled=not (cl
     status_text = st.empty()
 
     try:
+        # Convert uploaded files to BytesIO (works for both local and cloud)
+        from io import BytesIO
+
+        status_text.text("Loading uploaded files...")
+        progress_bar.progress(5)
+
+        # Convert clearing file to BytesIO
+        clearing_file.seek(0)
+        clearing_bytes = BytesIO(clearing_file.read())
+        clearing_bytes.name = clearing_file.name  # Preserve filename
+        clearing_file.seek(0)
+
+        # Convert broker files to BytesIO
+        broker_bytes_list = []
+        for broker_file in broker_files:
+            broker_file.seek(0)
+            broker_bytes = BytesIO(broker_file.read())
+            broker_bytes.name = broker_file.name  # Preserve filename
+            broker_bytes_list.append(broker_bytes)
+            broker_file.seek(0)
+
         # Initialize reconciler
         status_text.text("Initializing reconciliation engine...")
         progress_bar.progress(10)
@@ -115,8 +136,8 @@ if st.sidebar.button("🚀 Run Reconciliation", type="primary", disabled=not (cl
         progress_bar.progress(30)
 
         result = reconciler.reconcile(
-            clearing_file=clearing_file,
-            broker_files=broker_files,
+            clearing_file=clearing_bytes,
+            broker_files=broker_bytes_list,
             futures_mapping_file=futures_mapping_file
         )
 

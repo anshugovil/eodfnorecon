@@ -226,13 +226,25 @@ class TradeReconciler:
 
             file_obj.seek(0)
 
+            # Try to decrypt if password-protected
+            decrypted_file = decrypt_excel_file(file_obj)
+            if decrypted_file:
+                file_obj = decrypted_file
+                logger.info("File was password-protected, using decrypted version for detection")
+
             # Try reading as Excel
             try:
                 df = pd.read_excel(file_obj, nrows=100)  # Read first 100 rows
-            except:
+                logger.info(f"Successfully read Excel file for detection. Columns: {list(df.columns)}")
+            except Exception as e:
                 # Try reading as CSV
                 file_obj.seek(0)
-                df = pd.read_csv(file_obj, nrows=100)
+                try:
+                    df = pd.read_csv(file_obj, nrows=100)
+                    logger.info(f"Successfully read CSV file for detection. Columns: {list(df.columns)}")
+                except Exception as csv_error:
+                    logger.error(f"Could not read file as Excel or CSV: Excel error: {e}, CSV error: {csv_error}")
+                    return None
 
             # Method 1: Look for broker code columns
             broker_code_columns = ['Broker Code', 'BrokerNSECode', 'Broker NSE Code', 'TM Code']
@@ -294,10 +306,14 @@ class TradeReconciler:
                     return broker_info
 
             logger.warning("No broker code column or recognizable structure found in file")
+            logger.warning(f"File columns were: {list(df.columns)}")
+            logger.warning(f"First row of data: {df.iloc[0].to_dict() if len(df) > 0 else 'No data'}")
             return None
 
         except Exception as e:
             logger.error(f"Error detecting broker from content: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
     def _parse_clearing_file(self, file_obj, futures_mapping_file: str) -> pd.DataFrame:
