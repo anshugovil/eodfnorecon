@@ -294,6 +294,22 @@ if st.sidebar.button("🚀 Run Reconciliation", type="primary", disabled=not (cl
             else:
                 st.error(f"❌ Reconciliation failed: {result.get('error', 'Unknown error')}")
 
+                # Show detailed parse errors if available
+                if result.get('parse_errors'):
+                    st.markdown("---")
+                    st.subheader("🔍 Detailed Diagnostics")
+                    st.markdown("**Individual file errors:**")
+                    for error in result['parse_errors']:
+                        st.markdown(f"- {error}")
+
+                    st.info("""
+                    **💡 Troubleshooting Tips:**
+                    - Check Streamlit Cloud logs (Manage app → Logs) for column details
+                    - Verify files aren't corrupted
+                    - Try downloading and re-uploading files
+                    - Check if files work in desktop version first
+                    """)
+
     except Exception as e:
         progress_bar.progress(0)
         status_text.text("")

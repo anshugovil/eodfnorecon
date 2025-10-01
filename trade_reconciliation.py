@@ -99,6 +99,14 @@ class TradeReconciler:
                         parse_errors.append(error_msg)
                         continue
 
+                    # Check if detection returned diagnostic info instead of broker_info
+                    if isinstance(broker_info, dict) and broker_info.get('error') == 'detection_failed':
+                        columns = broker_info.get('columns', [])
+                        error_msg = f"Could not detect broker from {broker_file.name}. Columns found: {', '.join(columns[:10])}{'...' if len(columns) > 10 else ''}"
+                        logger.warning(error_msg)
+                        parse_errors.append(error_msg)
+                        continue
+
                     parser = get_parser_for_broker(broker_info['broker_id'], futures_mapping_file)
                     if not parser:
                         error_msg = f"No parser available for broker: {broker_info['broker_id']}"
@@ -128,7 +136,12 @@ class TradeReconciler:
             if not all_broker_trades:
                 error_detail = f"No broker trades parsed from {len(broker_files)} file(s). Details: {'; '.join(parse_errors)}"
                 logger.error(error_detail)
-                return {'success': False, 'error': error_detail}
+                return {
+                    'success': False,
+                    'error': error_detail,
+                    'parse_errors': parse_errors,  # Individual error messages
+                    'file_count': len(broker_files)
+                }
 
             broker_df_combined = pd.concat(all_broker_trades, ignore_index=True)
             logger.info(f"Total broker trades: {len(broker_df_combined)}")
@@ -308,7 +321,13 @@ class TradeReconciler:
             logger.warning("No broker code column or recognizable structure found in file")
             logger.warning(f"File columns were: {list(df.columns)}")
             logger.warning(f"First row of data: {df.iloc[0].to_dict() if len(df) > 0 else 'No data'}")
-            return None
+
+            # Return diagnostic info for UI display
+            return {
+                'error': 'detection_failed',
+                'columns': list(df.columns),
+                'first_row': df.iloc[0].to_dict() if len(df) > 0 else None
+            }
 
         except Exception as e:
             logger.error(f"Error detecting broker from content: {e}")
