@@ -79,38 +79,56 @@ class TradeReconciler:
             # Step 2: Parse all broker files
             logger.info("Step 2: Parsing broker files...")
             all_broker_trades = []
+            parse_errors = []
 
             for broker_file in broker_files:
-                # Try to detect broker from filename first
-                broker_info = detect_broker_from_filename(broker_file.name)
+                try:
+                    # Try to detect broker from filename first
+                    broker_info = detect_broker_from_filename(broker_file.name)
 
-                # If not found from filename, detect from file content
-                if not broker_info:
-                    logger.info(f"Detecting broker from file content: {broker_file.name}")
+                    # If not found from filename, detect from file content
+                    if not broker_info:
+                        logger.info(f"Detecting broker from file content: {broker_file.name}")
+                        broker_file.seek(0)
+                        broker_info = self._detect_broker_from_content(broker_file)
+                        broker_file.seek(0)  # Reset for parsing
+
+                    if not broker_info:
+                        error_msg = f"Could not detect broker type from file: {broker_file.name}"
+                        logger.warning(error_msg)
+                        parse_errors.append(error_msg)
+                        continue
+
+                    parser = get_parser_for_broker(broker_info['broker_id'], futures_mapping_file)
+                    if not parser:
+                        error_msg = f"No parser available for broker: {broker_info['broker_id']}"
+                        logger.warning(error_msg)
+                        parse_errors.append(error_msg)
+                        continue
+
+                    logger.info(f"Parsing {broker_file.name} as {broker_info['name']} (code: {broker_info['broker_code']})")
                     broker_file.seek(0)
-                    broker_info = self._detect_broker_from_content(broker_file)
-                    broker_file.seek(0)  # Reset for parsing
+                    broker_df = parser.parse_file(broker_file)
 
-                if not broker_info:
-                    logger.warning(f"Could not detect broker from filename or content: {broker_file.name}")
-                    continue
+                    if not broker_df.empty:
+                        broker_df['broker_name'] = broker_info['name']
+                        broker_df['broker_id'] = broker_info['broker_id']
+                        all_broker_trades.append(broker_df)
+                        logger.info(f"✅ Parsed {len(broker_df)} trades from {broker_info['name']} (file: {broker_file.name})")
+                    else:
+                        error_msg = f"No trades found in file: {broker_file.name} (broker: {broker_info['name']})"
+                        logger.warning(error_msg)
+                        parse_errors.append(error_msg)
 
-                parser = get_parser_for_broker(broker_info['broker_id'], futures_mapping_file)
-                if not parser:
-                    logger.warning(f"No parser available for broker: {broker_info['broker_id']}")
-                    continue
-
-                broker_file.seek(0)
-                broker_df = parser.parse_file(broker_file)
-
-                if not broker_df.empty:
-                    broker_df['broker_name'] = broker_info['name']
-                    broker_df['broker_id'] = broker_info['broker_id']
-                    all_broker_trades.append(broker_df)
-                    logger.info(f"Parsed {len(broker_df)} trades from {broker_info['name']} (file: {broker_file.name})")
+                except Exception as e:
+                    error_msg = f"Error parsing {broker_file.name}: {str(e)}"
+                    logger.exception(error_msg)
+                    parse_errors.append(error_msg)
 
             if not all_broker_trades:
-                return {'success': False, 'error': 'No broker trades parsed'}
+                error_detail = f"No broker trades parsed from {len(broker_files)} file(s). Details: {'; '.join(parse_errors)}"
+                logger.error(error_detail)
+                return {'success': False, 'error': error_detail}
 
             broker_df_combined = pd.concat(all_broker_trades, ignore_index=True)
             logger.info(f"Total broker trades: {len(broker_df_combined)}")

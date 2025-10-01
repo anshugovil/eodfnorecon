@@ -44,8 +44,22 @@ clearing_file = st.sidebar.file_uploader(
 # 2. Futures mapping
 use_default_mapping = st.sidebar.checkbox("Use default futures mapping.csv", value=True)
 if use_default_mapping:
-    futures_mapping_file = "futures mapping.csv"
-    st.sidebar.info("Using: futures mapping.csv")
+    # Try multiple locations for futures mapping file
+    possible_paths = [
+        "futures mapping.csv",
+        Path(__file__).parent / "futures mapping.csv",
+        Path("./futures mapping.csv"),
+    ]
+    futures_mapping_file = None
+    for path in possible_paths:
+        if Path(path).exists():
+            futures_mapping_file = str(path)
+            st.sidebar.success(f"✅ Found: {Path(path).name}")
+            break
+
+    if not futures_mapping_file:
+        st.sidebar.error("❌ futures mapping.csv not found!")
+        st.error("**Error:** Could not find 'futures mapping.csv'. Please upload it manually or check deployment files.")
 else:
     uploaded_mapping = st.sidebar.file_uploader(
         "Futures Mapping File",
